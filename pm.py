@@ -85,7 +85,7 @@ class PatchMatch:
         self.cols = 0
     
     def plane_match_cost(self, p, cx, cy, ws, cpv):
-        """计算某个平面下的匹配误差"""
+        """计算聚合匹配代价"""
         sign = -1 + 2 * cpv
         half = ws // 2
         cost = 0.0
@@ -183,7 +183,7 @@ class PatchMatch:
         return cost
 
     def precompute_pixels_weights(self, frame, weights, ws):
-        """赋予权重"""
+        """预处理计算权重"""
         half = ws // 2
         rows, cols = frame.shape[:2]
 
