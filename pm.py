@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import random
+from scipy import ndimage
 from plane import Plane
 
 WINDOW_SIZE = 35
@@ -27,22 +28,27 @@ class Matrix2D:
     def set(self, row, col, value):
         self.data[row][col] = value
 
-def compute_greyscale_gradient(frame, grad):
-    scale = 1
-    delta = 0
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    x_grad = np.zeros_like(gray, dtype=np.float32)
-    y_grad = np.zeros_like(gray, dtype=np.float32)
-    
-    cv2.Sobel(gray, x_grad, cv2.CV_32F, 1, 0, 3, scale, delta, cv2.BORDER_DEFAULT)
-    cv2.Sobel(gray, y_grad, cv2.CV_32F, 0, 1, 3, scale, delta, cv2.BORDER_DEFAULT)
-    
-    x_grad /= 8.0
-    y_grad /= 8.0
-    
-    for y in range(frame.shape[0]):
-        for x in range(frame.shape[1]):
-            grad[y, x] = [x_grad[y, x], y_grad[y, x]]
+
+
+def compute_greyscale_gradient(img, grads):
+    """计算灰度图像的梯度"""
+    scale = 1.0
+    delta = 0.0
+    # 转换为灰度图
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    grads[:,:,0]= ndimage.sobel(gray,axis=0)
+    grads[:,:,1]= ndimage.sobel(gray,axis=1)
+
+    '''
+    # 计算x方向梯度（Sobel）
+    cv2.Sobel(gray, grads[0], cv2.CV_32F, 1, 0, ksize=3)
+    # 计算y方向梯度（Sobel）
+    cv2.Sobel(gray, grads[1], cv2.CV_32F, 0, 1, ksize=3)
+    '''
+    # 如果需要缩放，可以这样做
+    if scale != 1.0 or delta != 0.0:
+        grads[0] = cv2.convertScaleAbs(grads[0], alpha=scale, beta=delta)
+        grads[1] = cv2.convertScaleAbs(grads[1], alpha=scale, beta=delta)
 
 def inside(x, y, lbx, lby, ubx, uby):
     return lbx <= x < ubx and lby <= y < uby
@@ -80,58 +86,170 @@ class PatchMatch:
     
     def plane_match_cost(self, p, cx, cy, ws, cpv):
         sign = -1 + 2 * cpv
-        cost = 0.0
         half = ws // 2
-        
+        cost = 0.0
+
         f1 = self.views[cpv]
         f2 = self.views[1 - cpv]
         g1 = self.grads[cpv]
         g2 = self.grads[1 - cpv]
         w1 = self.weigs[cpv]
+
+        # 获取图像尺寸
+        f1_rows, f1_cols = f1.shape[0], f1.shape[1]
         
-        for x in range(cx - half, cx + half + 1):
-            for y in range(cy - half, cy + half + 1):
-                if not inside(x, y, 0, 0, f1.shape[1], f1.shape[0]):
-                    continue
-                
-                dsp = disparity(x, y, p)
-                if dsp < 0 or dsp > MAX_DISPARITY:
-                    cost += PLANE_PENALTY
-                else:
-                    match = x + sign * dsp
-                    x_match = int(match)
-                    wm = 1 - (match - x_match)
-                    
-                    x_match = max(0, min(x_match, f1.shape[1] - 2))
-                    
-                    mcolo = vec_average(f2[y, x_match], f2[y, x_match + 1], wm)
-                    mgrad = vec_average(g2[y, x_match], g2[y, x_match + 1], wm)
-                    
-                    wy = y - cy + half
-                    wx = x - cx + half
-                    w = w1[cy, cx, wy, wx]
-                    cost += w * self.dissimilarity(f1[y, x], mcolo, g1[y, x], mgrad)
+        # 1. 生成窗口内所有坐标（x, y）的网格并展平
+        x_range = np.arange(cx - half, cx + half + 1)
+        y_range = np.arange(cy - half, cy + half + 1)
+        x_grid, y_grid = np.meshgrid(x_range, y_range, indexing='xy')
+        x_flat = x_grid.flatten()  # 窗口内所有x坐标（一维）
+        y_flat = y_grid.flatten()  # 窗口内所有y坐标（一维）
+
+        # 2. 筛选有效坐标（在图像范围内）
+        valid_mask = (x_flat >= 0) & (x_flat < f1_cols) & (y_flat >= 0) & (y_flat < f1_rows)
+        x_valid = x_flat[valid_mask]
+        y_valid = y_flat[valid_mask]
+        if len(x_valid) == 0:
+            return cost  # 无有效坐标时直接返回0
+
+        # 3. 计算所有有效坐标的视差dsp
+        dsp = p[0] * x_valid + p[1] * y_valid + p[2]  # 向量化计算视差
+
+        # 4. 区分有效视差（在[0, MAX_DISPARITY]范围内）和无效视差
+        valid_dsp_mask = (dsp >= 0) & (dsp <= MAX_DISPARITY)
+        invalid_dsp_count = np.sum(~valid_dsp_mask)  # 无效视差数量（用于惩罚项）
+        cost += invalid_dsp_count * PLANE_PENALTY  # 累加惩罚项
+
+        # 筛选出有效视差对应的坐标
+        x_effective = x_valid[valid_dsp_mask]
+        y_effective = y_valid[valid_dsp_mask]
+        dsp_effective = dsp[valid_dsp_mask]
+        if len(x_effective) == 0:
+            return cost  # 无有效视差时返回当前cost
+
+        # 5. 计算匹配点x坐标（双线性插值相关）
+        match = x_effective + sign * dsp_effective
+        x_match = match.astype(int)  # 整数部分
+        wm = 1 - (match - x_match)   # 插值权重
+
+        # 处理x_match边界（确保x_match和x_match+1在有效范围内）
+        x_match = np.clip(x_match, 0, f1_cols - 2)  # 避免x_match+1越界
+
+        # 6. 双线性插值计算mcolo和mgrad
+        # 从f2中获取插值颜色
+        f2_y = y_effective.astype(int)
+        f2_x0 = x_match
+        f2_x1 = x_match + 1
+        mcolo = wm[:, np.newaxis] * f2[f2_y, f2_x0] + (1 - wm[:, np.newaxis]) * f2[f2_y, f2_x1]
+
+        # 从g2中获取插值梯度（g2是双通道，需分别处理）
+        mgrad = np.empty((len(x_effective), 2), dtype=np.float32)
+        for i in range(2):  # 处理x和y方向梯度
+            mgrad[:, i] = wm * g2[f2_y, f2_x0, i] + (1 - wm) * g2[f2_y, f2_x1, i]
+
+        # 7. 获取对应的权重w
+        wy = (y_effective - cy + half).astype(int)
+        wx = (x_effective - cx + half).astype(int)
         
+        # 确保权重索引在有效范围内
+        wy = np.clip(wy, 0, ws - 1)
+        wx = np.clip(wx, 0, ws - 1)
+        
+        # 修正权重索引方式
+        w = w1[cy, cx, wy, wx]  # 从预计算的权重矩阵中索引
+
+        # 8. 计算不相似度并累加
+        f1_vals = f1[y_effective.astype(int), x_effective.astype(int)]  # f1中对应坐标的颜色
+        g1_vals = g1[y_effective.astype(int), x_effective.astype(int)]  # f1中对应坐标的梯度
+
+        # 修正：计算颜色和梯度的L1距离（绝对值之和）
+        # 对于颜色，我们需要对三个通道求和
+        cost_c = np.sum(np.abs(f1_vals - mcolo), axis=1)
+        # 对于梯度，我们需要对两个通道求和
+        cost_g = np.sum(np.abs(g1_vals - mgrad), axis=1)
+        
+        cost_c = np.minimum(cost_c, self.tau_c)
+        cost_g = np.minimum(cost_g, self.tau_g)
+        
+        # 累加加权总代价 - 确保所有数组都是1D
+        w = w.flatten()
+        cost_c = cost_c.flatten()
+        cost_g = cost_g.flatten()
+        
+        weighted_cost = w * ((1 - self.alpha) * cost_c + self.alpha * cost_g)
+        cost += np.sum(weighted_cost)
+
         return cost
-    
     def precompute_pixels_weights(self, frame, weights, ws):
         half = ws // 2
         rows, cols = frame.shape[:2]
+
+        if frame.dtype != np.float64:
+            frame = frame.astype(np.float64)
+
+        # 生成窗口内相对坐标
+        dy, dx = np.meshgrid(np.arange(-half, half+1), np.arange(-half, half+1), indexing='ij')
+        dy = dy.flatten()  # (ws*ws,)
+        dx = dx.flatten()  # (ws*ws,)
+        n_offsets = len(dy)
         
-        for cx in range(cols):
-            for cy in range(rows):
-                for x in range(cx - half, cx + half + 1):
-                    for y in range(cy - half, cy + half + 1):
-                        if inside(x, y, 0, 0, cols, rows):
-                            wy = y - cy + half
-                            wx = x - cx + half
-                            weights[cy, cx, wy, wx] = weight(frame[cy, cx], frame[y, x], self.gamma)
-    
+        # 生成所有中心坐标
+        cy, cx = np.meshgrid(np.arange(rows), np.arange(cols), indexing='ij')
+        cy = cy.reshape(-1, 1)  # (N, 1)
+        cx = cx.reshape(-1, 1)  # (N, 1)
+        n_centers = cy.shape[0]
+        
+        # 计算窗口内所有像素坐标
+        y = cy + dy.reshape(1, -1)  # (N, ws*ws)
+        x = cx + dx.reshape(1, -1)  # (N, ws*ws)
+        
+        # 边界处理
+        y = np.clip(y, 0, rows - 1)
+        x = np.clip(x, 0, cols - 1)
+        
+        # 计算窗口坐标权重数组索引
+        wy = dy + half  # (ws*ws,)
+        wx = dx + half  # (ws*ws,)
+        
+
+        # 计算权重
+        frame_vals = frame[cy[:, 0], cx[:, 0]]  # (N, 3)
+        window_vals = frame[y, x]  # (N, ws*ws, 3)
+        
+        # 扩展frame_vals以便广播
+        frame_vals_expanded = frame_vals[:, np.newaxis, :]  # (N, 1, 3)
+        dist = np.sum(np.abs(frame_vals_expanded - window_vals), axis=2)  # (N, ws*ws)
+        #print(f"dist 统计: min={dist.min():.2f}, max={dist.max():.2f}, mean={dist.mean():.2f}")
+        #print(f"gamma={self.gamma}")
+        #print(f"-dist/gamma 范围: {(-dist/self.gamma).min():.2f} 到 {(-dist/self.gamma).max():.2f}")
+
+        weights_vals = np.exp(-dist / self.gamma)  # (N, ws*ws)
+        
+        # 关键修正：使用循环逐个赋值，或者使用高级索引
+        # 方法1：使用循环（简单但可能慢）
+        # for i in range(n_offsets):
+        #     weights[cy[:, 0], cx[:, 0], wy[i], wx[i]] = weights_vals[:, i]
+        
+        # 方法2：使用高级索引（推荐）
+        # 创建索引数组
+        cy_idx = np.repeat(cy[:, 0], n_offsets)  # (N*ws*ws,)
+        cx_idx = np.repeat(cx[:, 0], n_offsets)  # (N*ws*ws,)
+        wy_idx = np.tile(wy, n_centers)  # (N*ws*ws,)
+        wx_idx = np.tile(wx, n_centers)  # (N*ws*ws,)
+        
+        # 展平权重值
+        weights_vals_flat = weights_vals.flatten()  # (N*ws*ws,)
+        
+        # 一次性赋值
+        weights[cy_idx, cx_idx, wy_idx, wx_idx] = weights_vals_flat
+        
+        return weights
+
     def planes_to_disparity(self, planes, disp):
-        for x in range(self.cols):
-            for y in range(self.rows):
-                disp[y, x] = disparity(x, y, planes(y, x))
-    
+            for x in range(self.cols):
+                for y in range(self.rows):
+                    disp[y, x] = disparity(x, y, planes(y, x))
+        
     def initialize_random_planes(self, planes, max_d):
         RAND_HALF = 0x7FFFFFFF  # 模拟RAND_MAX/2
         for y in range(self.rows):
