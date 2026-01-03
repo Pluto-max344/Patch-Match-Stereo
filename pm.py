@@ -8,6 +8,7 @@ WINDOW_SIZE = 35
 MAX_DISPARITY = 60
 PLANE_PENALTY = 120
 
+# 2维平面数据结构
 class Matrix2D:
     def __init__(self, rows=0, cols=0, default=None):
         self.rows = rows
@@ -51,19 +52,25 @@ def compute_greyscale_gradient(img, grads):
         grads[1] = cv2.convertScaleAbs(grads[1], alpha=scale, beta=delta)
 
 def inside(x, y, lbx, lby, ubx, uby):
+    """判断点是否在范围内"""
     return lbx <= x < ubx and lby <= y < uby
 
 def disparity(x, y, plane):
+    """计算平面内的点的视差"""
     return plane[0] * x + plane[1] * y + plane[2]
 
 def weight(p, q, gamma=10.0):
+    """自适应权重函数"""
     return np.exp(-np.linalg.norm(p - q, ord=1) / gamma)
 
 def vec_average(x, y, wx):
+    """均值函数"""
     return wx * x + (1 - wx) * y
 
+# 寻找倾斜平面类
 class PatchMatch:
     def __init__(self, alpha, gamma, tau_c, tau_g):
+        """初始化"""
         self.alpha = alpha
         self.gamma = gamma
         self.tau_c = tau_c
@@ -77,14 +84,8 @@ class PatchMatch:
         self.rows = 0
         self.cols = 0
     
-    def dissimilarity(self, pp, qq, pg, qg):
-        cost_c = np.linalg.norm(pp - qq, ord=1)
-        cost_g = np.linalg.norm(pg - qg, ord=1)
-        cost_c = min(cost_c, self.tau_c)
-        cost_g = min(cost_g, self.tau_g)
-        return (1 - self.alpha) * cost_c + self.alpha * cost_g
-    
     def plane_match_cost(self, p, cx, cy, ws, cpv):
+        """计算某个平面下的匹配误差"""
         sign = -1 + 2 * cpv
         half = ws // 2
         cost = 0.0
@@ -180,7 +181,9 @@ class PatchMatch:
         cost += np.sum(weighted_cost)
 
         return cost
+
     def precompute_pixels_weights(self, frame, weights, ws):
+        """赋予权重"""
         half = ws // 2
         rows, cols = frame.shape[:2]
 
@@ -246,11 +249,13 @@ class PatchMatch:
         return weights
 
     def planes_to_disparity(self, planes, disp):
+        """计算平面内视差"""
             for x in range(self.cols):
                 for y in range(self.rows):
                     disp[y, x] = disparity(x, y, planes(y, x))
         
     def initialize_random_planes(self, planes, max_d):
+        """初始化平面"""
         RAND_HALF = 0x7FFFFFFF  # 模拟RAND_MAX/2
         for y in range(self.rows):
             for x in range(self.cols):
@@ -266,11 +271,13 @@ class PatchMatch:
                 planes.set(y, x, Plane(point, normal))
     
     def evaluate_planes_cost(self, cpv):
+        """计算平面对应匹配代价"""
         for y in range(self.rows):
             for x in range(self.cols):
                 self.costs[cpv][y, x] = self.plane_match_cost(self.planes[cpv](y, x), x, y, WINDOW_SIZE, cpv)
     
     def spatial_propagation(self, x, y, cpv, iter):
+        """空间传播"""
         rows = self.views[cpv].shape[0]
         cols = self.views[cpv].shape[1]
         offsets = []
@@ -294,6 +301,7 @@ class PatchMatch:
                     self.costs[cpv][y, x] = new_cost
     
     def view_propagation(self, x, y, cpv):
+        """左右视图传播"""
         sign = -1 if cpv == 0 else 1
         view_plane = self.planes[cpv](y, x)
         
@@ -313,6 +321,7 @@ class PatchMatch:
                 self.costs[1 - cpv][my_int, mx_int] = new_cost
     
     def plane_refinement(self, x, y, cpv, max_delta_z, max_delta_n, end_dz):
+        """平面细化,调整平面参数"""
         max_dz = max_delta_z
         max_dn = max_delta_n
         
@@ -344,11 +353,13 @@ class PatchMatch:
             max_dn /= 2.0
     
     def process_pixel(self, x, y, cpv, iter):
+        """处理像素，通过传播建立平面"""
         self.spatial_propagation(x, y, cpv, iter)
         self.plane_refinement(x, y, cpv, MAX_DISPARITY / 2, 1.0, 0.1)
         self.view_propagation(x, y, cpv)
     
     def fill_invalid_pixels(self, y, x, planes, validity):
+        """通过反推左右像素视差的方法填充遮挡像素"""
         x_lft = x - 1
         x_rgt = x + 1
         
@@ -371,6 +382,7 @@ class PatchMatch:
         planes.set(y, x, planes(y, best_plane_x))
     
     def weighted_median_filter(self, cx, cy, disparity, weights, valid, ws, use_invalid):
+        """加权中值滤波"""
         half = ws // 2
         w_tot = 0.0
         disps_w = []
@@ -398,6 +410,7 @@ class PatchMatch:
                 break
     
     def set(self, img1, img2):
+        """初始化"""
         self.views[0] = img1
         self.views[1] = img2
         self.rows, self.cols = img1.shape[:2]
@@ -431,6 +444,7 @@ class PatchMatch:
         self.disps[1] = np.zeros((self.rows, self.cols), dtype=np.float32)
     
     def process(self, iterations, reverse=False):
+        """处理像素，通过传播建立平面，计算平面视差"""
         print("Processing left and right views...")
         start = reverse
         end = iterations + reverse
@@ -454,6 +468,7 @@ class PatchMatch:
         self.planes_to_disparity(self.planes[1], self.disps[1])
     
     def postProcess(self):
+        """后处理，左右一致化检查，，填充遮挡像素，加权中值滤波"""
         print("Executing post-processing...")
         lft_validity = np.zeros((self.rows, self.cols), dtype=np.bool_)
         rgt_validity = np.zeros((self.rows, self.cols), dtype=np.bool_)
@@ -481,8 +496,3 @@ class PatchMatch:
                 self.weighted_median_filter(x, y, self.disps[0], self.weigs[0], lft_validity, WINDOW_SIZE, False)
                 self.weighted_median_filter(x, y, self.disps[1], self.weigs[1], rgt_validity, WINDOW_SIZE, False)
     
-    def get_left_disparity_map(self):
-        return self.disps[0]
-    
-    def get_right_disparity_map(self):
-        return self.disps[1]
