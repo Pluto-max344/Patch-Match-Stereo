@@ -1,10 +1,11 @@
+# -*- coding: utf-8 -*-
 import cv2
 from pm import PatchMatch
 
 def main():
     # 读取图像
-    img_left = cv2.imread('dataset/Aloe/view1.png')
-    img_right = cv2.imread('dataset/Aloe/view5.png')
+    img_left = cv2.imread('dataset/Baby1/view1.png')
+    img_right = cv2.imread('dataset/Baby1/view5.png')
     
     if img_left is None or img_right is None:
         print("Error: Could not load images")
@@ -28,16 +29,17 @@ def main():
     
     # 处理
     pm.process(iterations=3)
+    disp_left, disp_right=pm.disp_left,pm.disp_right
     
     # 后处理
-    disp_left, disp_right = pm.post_process()
+    #disp_left, disp_right = pm.post_process()
     
     # 归一化并保存
     disp1_normalized = cv2.normalize(disp_left, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
     disp2_normalized = cv2.normalize(disp_right, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
     
-    cv2.imwrite("disparity_left.png", disp1_normalized)
-    cv2.imwrite("disparity_right.png", disp2_normalized)
+    cv2.imwrite("disparity_left3.png", disp1_normalized)
+    cv2.imwrite("disparity_right3.png", disp2_normalized)
     print("Done!")
 
 

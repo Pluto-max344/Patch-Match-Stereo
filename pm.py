@@ -1,4 +1,4 @@
-# -*- coding: GBK -*-
+# -*- coding: utf-8 -*-
 import numpy as np
 import cv2
 from scipy import ndimage
@@ -9,7 +9,7 @@ PLANE_PENALTY = 120
 
 # 平面参数存储类（向量化友好）
 class PlaneParams:
-    """存储平面参数 (a, b, c)，使得视差 d = a*x + b*y + c"""
+    """存储平面参数 (a, b, c)，使得视�? d = a*x + b*y + c"""
     def __init__(self, shape):
         self.shape = shape  # (rows, cols)
         # 存储平面参数: a, b, c
@@ -18,20 +18,20 @@ class PlaneParams:
         self.c = np.zeros(shape, dtype=np.float32)
     
     def get_at(self, y, x):
-        """获取单个位置的平面参数"""
+        """获取单个位置的平面参�?"""
         return np.array([self.a[y, x], self.b[y, x], self.c[y, x]])
     
     def set_at(self, y, x, params):
-        """设置单个位置的平面参数"""
+        """设置单个位置的平面参�?"""
         self.a[y, x], self.b[y, x], self.c[y, x] = params
     
 def params_to_normal(a, b, c):
-    """将平面参数转换为法向量表示"""       
+    """将平面参数转换为法向量表�?"""       
     # 平面方程: a*x + b*y - d + c = 0
-    # 所以法向量为 (a, b, -1)
+    # 所以法向量�? (a, b, -1)
     nz = np.ones(a.shape)
         
-    # 归一化
+    # 归一�?
     norm = np.sqrt(a**2+b**2+nz**2)
     nx=a/norm
     ny=b/norm
@@ -40,7 +40,7 @@ def params_to_normal(a, b, c):
     return nx,ny,nz
 
 def normal_to_params(nx,ny,nz, d,x, y):
-    """将法向量转换回平面参数"""
+    """将法向量转换回平面参�?"""
     # 避免除零
     nz[nz==0]=1e-8
     
@@ -51,7 +51,7 @@ def normal_to_params(nx,ny,nz, d,x, y):
     return a, b, c
 
 def compute_greyscale_gradient(img, grads):
-    """计算灰度图像的梯度"""
+    """计算灰度图像的梯�?"""
     scale = 1.0
     delta = 0.0
     # 转换为灰度图
@@ -60,18 +60,18 @@ def compute_greyscale_gradient(img, grads):
     grads[:,:,1]= ndimage.sobel(gray,axis=1)
 
     '''
-    # 计算x方向梯度（Sobel）
+    # 计算x方向梯度（Sobel�?
     cv2.Sobel(gray, grads[0], cv2.CV_32F, 1, 0, ksize=3)
-    # 计算y方向梯度（Sobel）
+    # 计算y方向梯度（Sobel�?
     cv2.Sobel(gray, grads[1], cv2.CV_32F, 0, 1, ksize=3)
     '''
-    # 如果需要缩放，可以这样做
+    # 如果需要缩放，可以这样�?
     if scale != 1.0 or delta != 0.0:
         grads[0] = cv2.convertScaleAbs(grads[0], alpha=scale, beta=delta)
         grads[1] = cv2.convertScaleAbs(grads[1], alpha=scale, beta=delta)
 
 def inside(x, y, lbx, lby, ubx, uby):
-    """判断点是否在范围内"""
+    """判断点是否在范围�?"""
     return lbx <= x < ubx and lby <= y < uby
 
 # PatchMatch类（优化版）
@@ -92,13 +92,13 @@ class PatchMatch:
         self.planes_left = None
         self.planes_right = None
         
-        # 代价和权重
+        # 代价和权�?
         self.cost_left = None
         self.cost_right = None
         self.weight_left = None
         self.weight_right = None
         
-        # 视差图
+        # 视差�?
         self.disp_left = None
         self.disp_right = None
         
@@ -108,15 +108,15 @@ class PatchMatch:
     
     def plane_match_cost(self, plane_params, cx, cy, cpv):
         """计算聚合匹配代价"""
-        sign = -1 if cpv == 0 else 1  # 0:左视图, 1:右视图
+        sign = -1 if cpv == 0 else 1  # 0:左视�?, 1:右视�?
         half = WINDOW_SIZE // 2
         
-        # 选择当前视图和参考视图
-        if cpv == 0:  # 左视图
+        # 选择当前视图和参考视�?
+        if cpv == 0:  # 左视�?
             f1, f2 = self.img_left, self.img_right
             g1, g2 = self.grad_left, self.grad_right
             weights = self.weight_left[cy, cx]
-        else:  # 右视图
+        else:  # 右视�?
             f1, f2 = self.img_right, self.img_left
             g1, g2 = self.grad_right, self.grad_left
             weights = self.weight_right[cy, cx]
@@ -128,7 +128,7 @@ class PatchMatch:
         y_flat = y_grid.flatten()
         x_flat = x_grid.flatten()
         
-        # 筛选有效坐标
+        # 筛选有效坐�?
         valid = (x_flat >= 0) & (x_flat < self.cols) & (y_flat >= 0) & (y_flat < self.rows)
         if not np.any(valid):
             return 0.0
@@ -155,13 +155,13 @@ class PatchMatch:
         match_x = x_eff + sign * d_eff
         x0 = np.floor(match_x).astype(int)
         x1 = x0 + 1
-        wx = x1 - match_x  # 插值权重
+        wx = x1 - match_x  # 插值权�?
         
         # 边界处理
         x0 = np.clip(x0, 0, self.cols - 2)
         x1 = x0+1
         
-        # 双线性插值
+        # 双线性插�?
         y_idx = y_eff.astype(int)
         color_interp = wx[:, None] * f2[y_idx, x0] + (1 - wx[:, None]) * f2[y_idx, x1]
         grad_interp_x = wx * g2[y_idx, x0, 0] + (1 - wx) * g2[y_idx, x1, 0]
@@ -187,25 +187,25 @@ class PatchMatch:
     
     def plane_match_cost_vectorized(self, a_list, b_list, c_list,  x_list, y_list, cpv):
         """
-        向量化版本：一次性计算所有像素点的平面匹配代价
+        向量化版本：一次性计算所有像素点的平面匹配代�?
         
         参数:
             plane_params_all: (rows, cols, 3) 每个像素点的平面参数
-            cpv: 0或1，表示当前视图是左还是右
+            cpv: 0�?1，表示当前视图是左还是右
             
         返回:
             cost_map: (rows, cols) 每个像素点的匹配代价
         """
-        sign = -1 if cpv == 0 else 1  # 0:左视图, 1:右视图
+        sign = -1 if cpv == 0 else 1  # 0:左视�?, 1:右视�?
         half = WINDOW_SIZE // 2
         rows, cols = x_list.shape
 
-        # 选择当前视图和参考视图
-        if cpv == 0:  # 左视图
+        # 选择当前视图和参考视�?
+        if cpv == 0:  # 左视�?
             f1, f2 = self.img_left, self.img_right
             g1, g2 = self.grad_left, self.grad_right
             weights = self.weight_left
-        else:  # 右视图
+        else:  # 右视�?
             f1, f2 = self.img_right, self.img_left
             g1, g2 = self.grad_right, self.grad_left
             weights = self.weight_right
@@ -215,7 +215,7 @@ class PatchMatch:
         x_offsets = np.arange(-half, half + 1)
         y_offsets_grid, x_offsets_grid = np.meshgrid(y_offsets, x_offsets, indexing='ij')
         
-        # 扩展偏移以匹配所有像素
+        # 扩展偏移以匹配所有像�?
         y_offsets_exp = y_offsets_grid[None, None, :, :]  # (1, 1, W, W)
         x_offsets_exp = x_offsets_grid[None, None, :, :]  # (1, 1, W, W)
         
@@ -234,8 +234,8 @@ class PatchMatch:
         # 初始化代价图
         cost_map = np.zeros((rows, cols))
         
-        # 为每个像素计算窗口内所有点的视差
-        # 扩展平面参数以匹配窗口形状
+        # 为每个像素计算窗口内所有点的视�?
+        # 扩展平面参数以匹配窗口形�?
         a = a_list[:, :, None, None]  # (rows, cols, 1, 1)
         b = b_list[:, :, None, None]  # (rows, cols, 1, 1)
         c = c_list[:, :, None, None]  # (rows, cols, 1, 1)
@@ -259,10 +259,10 @@ class PatchMatch:
         if not np.any(valid_d_mask):
             return cost_map
         
-        # 获取有效视差的坐标
+        # 获取有效视差的坐�?
         valid_indices = np.where(valid_d_mask)
         
-        # 准备批量处理的数据
+        # 准备批量处理的数�?
         y_eff = y_all[valid_indices].astype(int)
         x_eff = x_all[valid_indices].astype(int)
         d_eff = d[valid_indices]
@@ -275,14 +275,14 @@ class PatchMatch:
         match_x = x_eff + sign * d_eff
         x0 = np.floor(match_x).astype(int)
         x1 = x0 + 1
-        wx = x1 - match_x  # 插值权重
+        wx = x1 - match_x  # 插值权�?
         
         # 边界处理
         x0 = np.clip(x0, 0, self.cols - 2)
         x1 = x0+1
         
 
-        # 批量双线性插值
+        # 批量双线性插�?
         color_interp = (wx[:, None] * f2[y_eff, x0] + 
                     (1 - wx[:, None]) * f2[y_eff, x1])
         
@@ -312,32 +312,32 @@ class PatchMatch:
         weighted_cost *= w
         
         # 累加到代价图
-        # 使用numpy的add.at进行安全的累加
+        # 使用numpy的add.at进行安全的累�?
         np.add.at(cost_map, (cy, cx), weighted_cost)
         
         return cost_map
         
     def precompute_pixels_weights(self, frame, weights, ws):
-        """预处理计算权重"""
+        """预处理计算权�?"""
         half = ws // 2
         rows, cols = frame.shape[:2]
 
         if frame.dtype != np.float64:
             frame = frame.astype(np.float64)
 
-        # 生成窗口内相对坐标
+        # 生成窗口内相对坐�?
         dy, dx = np.meshgrid(np.arange(-half, half+1), np.arange(-half, half+1), indexing='ij')
         dy = dy.flatten()  # (ws*ws,)
         dx = dx.flatten()  # (ws*ws,)
         n_offsets = len(dy)
         
-        # 生成所有中心坐标
+        # 生成所有中心坐�?
         cy, cx = np.meshgrid(np.arange(rows), np.arange(cols), indexing='ij')
         cy = cy.reshape(-1, 1)  # (N, 1)
         cx = cx.reshape(-1, 1)  # (N, 1)
         n_centers = cy.shape[0]
         
-        # 计算窗口内所有像素坐标
+        # 计算窗口内所有像素坐�?
         y = cy + dy.reshape(1, -1)  # (N, ws*ws)
         x = cx + dx.reshape(1, -1)  # (N, ws*ws)
         
@@ -359,32 +359,32 @@ class PatchMatch:
         dist = np.sum(np.abs(frame_vals_expanded - window_vals), axis=2)  # (N, ws*ws)
         #print(f"dist 统计: min={dist.min():.2f}, max={dist.max():.2f}, mean={dist.mean():.2f}")
         #print(f"gamma={self.gamma}")
-        #print(f"-dist/gamma 范围: {(-dist/self.gamma).min():.2f} 到 {(-dist/self.gamma).max():.2f}")
+        #print(f"-dist/gamma 范围: {(-dist/self.gamma).min():.2f} �? {(-dist/self.gamma).max():.2f}")
 
         weights_vals = np.exp(-dist / self.gamma)  # (N, ws*ws)
         
-        # 关键修正：使用循环逐个赋值，或者使用高级索引
+        # 关键修正：使用循环逐个赋值，或者使用高级索�?
         # 方法1：使用循环（简单但可能慢）
         # for i in range(n_offsets):
         #     weights[cy[:, 0], cx[:, 0], wy[i], wx[i]] = weights_vals[:, i]
         
-        # 方法2：使用高级索引（推荐）
+        # 方法2：使用高级索引（推荐�?
         # 创建索引数组
         cy_idx = np.repeat(cy[:, 0], n_offsets)  # (N*ws*ws,)
         cx_idx = np.repeat(cx[:, 0], n_offsets)  # (N*ws*ws,)
         wy_idx = np.tile(wy, n_centers)  # (N*ws*ws,)
         wx_idx = np.tile(wx, n_centers)  # (N*ws*ws,)
         
-        # 展平权重值
+        # 展平权重�?
         weights_vals_flat = weights_vals.flatten()  # (N*ws*ws,)
         
-        # 一次性赋值
+        # 一次性赋�?
         weights[cy_idx, cx_idx, wy_idx, wx_idx] = weights_vals_flat
         
         return weights
     
     def initialize_random_planes(self, planes, max_d):
-        """初始化随机平面"""
+        """初始化随机平�?"""
         rows, cols = planes.shape
         RAND_HALF = 0x7FFFFFFF  # 模拟RAND_MAX/2
         # 随机法向量（归一化）
@@ -393,7 +393,7 @@ class PatchMatch:
         nz = (np.random.uniform(-RAND_HALF, RAND_HALF,(rows,cols))) / RAND_HALF
         
         norm = np.sqrt(nx**2 + ny**2 + nz**2)
-        norm[norm == 0] = 1.0  # 避免除以零
+        norm[norm == 0] = 1.0  # 避免除以�?
         
         nx = nx / norm
         ny = ny / norm
@@ -404,8 +404,8 @@ class PatchMatch:
         
         # 从法向量计算平面参数
         # 对于平面方程 n·(X - P) = 0，其中X=(x,y,d)
-        # 展开得: nx*x + ny*y + nz*d - n·P = 0
-        # 所以: d = (-nx/nz)*x + (-ny/nz)*y + (n·P/nz)
+        # 展开�?: nx*x + ny*y + nz*d - n·P = 0
+        # 所�?: d = (-nx/nz)*x + (-ny/nz)*y + (n·P/nz)
         x_grid, y_grid = np.meshgrid(np.arange(cols), np.arange(rows),indexing='xy')
         z_grid = np.random.uniform(0,max_d,(rows,cols))
         planes.a = -nx / nz_safe
@@ -419,8 +419,79 @@ class PatchMatch:
         self.cost_left = self.plane_match_cost_vectorized(self.planes_left.a, self.planes_left.b, self.planes_left.c, x_list, y_list, 0)
         self.cost_right = self.plane_match_cost_vectorized(self.planes_right.a, self.planes_right.b, self.planes_right.c, x_list, y_list, 1)
 
-    def spatial_propagation(self, cpv, iter_even):
-        """空间传播"""
+    def adaptive_checkerboard_sampling(self, y, x, cpv, iter_even):
+        """自适应棋盘采样：根据图像梯度选择合适的采样模式"""
+        if cpv == 0:
+            grad_x = self.grad_left[y, x, 0]
+            grad_y = self.grad_left[y, x, 1]
+        else:
+            grad_x = self.grad_right[y, x, 0]
+            grad_y = self.grad_right[y, x, 1]
+        
+        # 计算梯度强度
+        grad_magnitude = np.sqrt(grad_x**2 + grad_y**2)
+        
+        # 自适应阈值
+        grad_threshold = np.percentile(grad_magnitude, 70) if np.any(grad_magnitude) else 0
+        
+        # 根据梯度方向选择采样模式
+        if grad_magnitude > grad_threshold:
+            # 高梯度区域：使用V型采样
+            return self.v_shaped_sampling(y, x, grad_x, grad_y, cpv, iter_even)
+        else:
+            # 低梯度区域：使用长条型采样
+            return self.long_strip_sampling(y, x, cpv, iter_even)
+
+    def v_shaped_sampling(self, y, x, grad_x, grad_y, cpv, iter_even):
+        """V型采样：沿着梯度方向的V型采样模式"""
+        # 计算梯度方向
+        if grad_x != 0:
+            direction = np.arctan(grad_y / grad_x)
+        else:
+            direction = np.pi / 2
+        
+        # V型采样的四个点
+        samples = []
+        
+        # 沿着梯度方向和垂直方向采样
+        for dist in [1, 2, 3]:  # 采样距离
+            # 主方向
+            dx1 = int(dist * np.cos(direction))
+            dy1 = int(dist * np.sin(direction))
+            
+            # 垂直方向
+            dx2 = int(dist * np.cos(direction + np.pi/2))
+            dy2 = int(dist * np.sin(direction + np.pi/2))
+            
+            # 添加四个方向的采样点
+            samples.append((y + dy1, x + dx1))
+            samples.append((y - dy1, x - dx1))
+            samples.append((y + dy2, x + dx2))
+            samples.append((y - dy2, x - dx2))
+        
+        return samples
+
+    def long_strip_sampling(self, y, x, cpv, iter_even):
+        """长条型采样：沿着水平和垂直方向的长条采样"""
+        samples = []
+        
+        # 根据迭代奇偶性选择主要方向
+        if iter_even:
+            # 偶数迭代：主要关注水平和上方向
+            directions = [(0, -1), (0, 1), (-1, 0), (-2, 0), (0, -2), (0, 2)]
+        else:
+            # 奇数迭代：主要关注水平和下方向
+            directions = [(0, -1), (0, 1), (1, 0), (2, 0), (0, -2), (0, 2)]
+        
+        # 扩展采样距离
+        for dy, dx in directions:
+            for scale in [1, 2, 3]:  # 多尺度采样
+                samples.append((y + dy * scale, x + dx * scale))
+        
+        return samples
+
+    def adaptive_spatial_propagation(self, cpv, iter_even):
+        """自适应空间传播：使用棋盘采样模式"""
         if cpv == 0:
             planes = self.planes_left
             costs = self.cost_left
@@ -430,44 +501,37 @@ class PatchMatch:
         
         rows, cols = self.rows, self.cols
         
-        if iter_even:
-            # 从上到下，从左到右
-            for y in range(rows):
-                for x in range(cols):
-                    # 检查上方邻居
-                    if y > 0:
-                        neighbor_params = planes.get_at(y-1, x)
+        # 创建棋盘格模式
+        for y in range(rows):
+            for x in range(cols):
+                # 棋盘格模式：交替处理像素
+                if (y + x) % 2 == (0 if iter_even else 1):
+                    continue
+                
+                # 获取自适应采样点
+                samples = self.adaptive_checkerboard_sampling(y, x, cpv, iter_even)
+                
+                best_cost = costs[y, x]
+                best_params = planes.get_at(y, x)
+                
+                # 检查所有采样点
+                for sample_y, sample_x in samples:
+                    if 0 <= sample_y < rows and 0 <= sample_x < cols:
+                        neighbor_params = planes.get_at(sample_y, sample_x)
                         new_cost = self.plane_match_cost(neighbor_params, x, y, cpv)
-                        if new_cost < costs[y, x]:
-                            planes.set_at(y, x, neighbor_params)
-                            costs[y, x] = new_cost
-                    
-                    # 检查下方邻居
-                    if x > 0:
-                        neighbor_params = planes.get_at(y, x-1)
-                        new_cost = self.plane_match_cost(neighbor_params, x, y, cpv)
-                        if new_cost < costs[y, x]:
-                            planes.set_at(y, x, neighbor_params)
-                            costs[y, x] = new_cost
-        else:
-            # 从下到上，从右到左
-            for y in range(rows-1, -1, -1):
-                for x in range(cols-1, -1, -1):
-                    # 检查下方邻居
-                    if y < rows-1:
-                        neighbor_params = planes.get_at(y+1, x)
-                        new_cost = self.plane_match_cost(neighbor_params, x, y, cpv)
-                        if new_cost < costs[y, x]:
-                            planes.set_at(y, x, neighbor_params)
-                            costs[y, x] = new_cost
-                    
-                    # 检查右方邻居
-                    if x < cols-1:
-                        neighbor_params = planes.get_at(y, x+1)
-                        new_cost = self.plane_match_cost(neighbor_params, x, y, cpv)
-                        if new_cost < costs[y, x]:
-                            planes.set_at(y, x, neighbor_params)
-                            costs[y, x] = new_cost
+                        
+                        if new_cost < best_cost:
+                            best_cost = new_cost
+                            best_params = neighbor_params
+                
+                # 如果找到更好的参数，更新当前像素
+                if best_cost < costs[y, x]:
+                    planes.set_at(y, x, best_params)
+                    costs[y, x] = best_cost
+
+    def spatial_propagation(self, cpv, iter_even):
+        """空间传播（兼容旧版本）"""
+        self.adaptive_spatial_propagation(cpv, iter_even)
     
     def plane_refinement_vectorized(self, cpv, max_iterations=8):
         """向量化的平面细化"""
@@ -480,7 +544,7 @@ class PatchMatch:
         
         rows, cols = self.rows, self.cols
         
-        # 初始化平面参数
+        # 初始化平面参�?
         a_curr = planes.a.copy()  # (rows, cols)
         b_curr = planes.b.copy()
         c_curr = planes.c.copy()
@@ -496,13 +560,13 @@ class PatchMatch:
             if scale_idx >= max_iterations:
                 break
                 
-            # 当前尺度的扰动范围
+            # 当前尺度的扰动范�?
             max_dz = (MAX_DISPARITY / 2) * scale
             max_dn=1.0
 
             # 生成随机扰动
-            # 这里我们可以生成多组随机扰动，选择最好的一个
-            num_trials = 3  # 每个尺度尝试3次扰动
+            # 这里我们可以生成多组随机扰动，选择最好的一�?
+            num_trials = 3  # 每个尺度尝试3次扰�?
             
             for trial in range(num_trials):
                 # 1. 生成视差扰动
@@ -522,33 +586,33 @@ class PatchMatch:
                 new_ny=new_ny/norm
                 new_nz=new_nz/norm
                 
-                # 计算新参数
+                # 计算新参�?
                 a_new,b_new,c_new=normal_to_params(nx,ny,nz, z, x_grid, y_grid)
                 
-                # 批量计算新代价
+                # 批量计算新代�?
                 new_costs = self.plane_match_cost_vectorized(
                     a_new, b_new, c_new,
                     x_grid, y_grid, cpv
                 )
                 
-                # 找到代价降低的像素
+                # 找到代价降低的像�?
                 improved_mask = new_costs < cost_curr
                 
                 if np.any(improved_mask):
-                    # 更新改进的像素
+                    # 更新改进的像�?
                     a_curr[improved_mask] = a_new[improved_mask]
                     b_curr[improved_mask] = b_new[improved_mask]
                     c_curr[improved_mask] = c_new[improved_mask]
                     cost_curr[improved_mask] = new_costs[improved_mask]
         
-        # 更新平面和代价
+        # 更新平面和代�?
         planes.a[:, :] = a_curr
         planes.b[:, :] = b_curr
         planes.c[:, :] = c_curr
         costs[:, :] = cost_curr
     
     def view_propagation_vectorized(self, cpv):
-        """向量化的视图间传播"""
+        """向量化的视图间传�?"""
         rows, cols = self.rows, self.cols
         
         if cpv == 0:  # 从左到右传播
@@ -572,7 +636,7 @@ class PatchMatch:
         # 创建坐标网格
         y_grid, x_grid = np.mgrid[0:rows, 0:cols]
         
-        # 计算所有像素的视差（向量化）
+        # 计算所有像素的视差（向量化�?
         d = a_src * x_grid + b_src * y_grid + c_src  # 形状: (rows, cols)
         
         # 计算目标位置
@@ -583,7 +647,7 @@ class PatchMatch:
         # 创建有效掩码
         valid_mask = (target_x_int >= 0) & (target_x_int < cols)
         
-        # 如果没有有效像素，直接返回
+        # 如果没有有效像素，直接返�?
         if not np.any(valid_mask):
             return
         
@@ -602,8 +666,8 @@ class PatchMatch:
         a_dst,b_dst,c_dst=normal_to_params(nx,ny,nz,d_dst,target_x_valid,y_valid)
         
         # 计算新代价（需要实现向量化的代价计算）
-        # 创建临时二维数组，只在有效位置填充数据
-        # 创建零数组
+        # 创建临时二维数组，只在有效位置填充数�?
+        # 创建零数�?
         a_temp = np.zeros((rows, cols))
         b_temp = np.zeros((rows, cols))
         c_temp = np.zeros((rows, cols))
@@ -617,12 +681,12 @@ class PatchMatch:
         cx_temp[y_valid, x_valid] = target_x_valid
         cy_temp[y_valid, x_valid] = y_valid
 
-        # 调用向量化函数
+        # 调用向量化函�?
         cost_map = self.plane_match_cost_vectorized(
             a_temp, b_temp, c_temp, cx_temp, cy_temp, 1-cpv
         )
 
-        # 提取有效位置的代价
+        # 提取有效位置的代�?
         new_costs = cost_map[y_valid, x_valid]
         dst_costs_flat =dst_costs[y_valid, target_x_valid]
         
@@ -647,11 +711,11 @@ class PatchMatch:
         dst_costs[update_y, update_x] = update_costs
     
     def compute_disparity_maps(self):
-        """计算视差图"""
+        """计算视差�?"""
         self.disp_left = np.zeros((self.rows, self.cols), dtype=np.float32)
         self.disp_right = np.zeros((self.rows, self.cols), dtype=np.float32)
         
-        # 为每个像素计算视差
+        # 为每个像素计算视�?
         y_coords, x_coords = np.meshgrid(np.arange(self.rows), np.arange(self.cols), indexing='ij')
         
         self.disp_left = self.planes_left.a * x_coords + self.planes_left.b * y_coords + self.planes_left.c
@@ -659,7 +723,7 @@ class PatchMatch:
         
 
     def fill_invalid_pixels(self, y, x, planes, validity):
-        """通过反推左右像素视差的方法填充遮挡像素"""
+        """通过反推左右像素视差的方法填充遮挡像�?"""
         x_lft = x - 1
         x_rgt = x + 1
         
@@ -683,7 +747,7 @@ class PatchMatch:
         planes.set_at(y, x, params)
     
     def weighted_median_filter(self, cx, cy, disparity, weights, valid, ws, use_invalid):
-        """加权中值滤波"""
+        """加权中值滤�?"""
         half = ws // 2
         w_tot = 0.0
         disps_w = []
@@ -742,7 +806,7 @@ class PatchMatch:
         self.disp_right = np.zeros((self.rows, self.cols), dtype=np.float32)
     
     def process(self, iterations=3):
-        """主处理流程"""
+        """主处理流�?"""
         print("Processing...")
         
         for iter in range(iterations):
@@ -757,7 +821,7 @@ class PatchMatch:
         self.compute_disparity_maps()
     
     def post_process(self):
-        """后处理，左右一致化检查，填充遮挡像素，加权中值滤波"""
+        """后处理，左右一致化检查，填充遮挡像素，加权中值滤�?"""
         print("Executing post-processing...")
         lft_validity = np.zeros((self.rows, self.cols), dtype=np.bool_)
         rgt_validity = np.zeros((self.rows, self.cols), dtype=np.bool_)
